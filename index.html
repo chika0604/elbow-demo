@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>肘の角度をはかる</title>
+<style>
+  :root {
+    --bg: #FBF7F0; --ink: #1B2340; --ink2: #4A5068; --line: #E3DCCF;
+    --orange: #D9561A; --orange-dk: #B9470D; --blue: #2766C4; --card: #FFFFFF;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12172A; --ink: #F3EFE8; --ink2: #B7BCCB; --line: #2C3350; --card: #1B2340;
+      --orange: #F08A4B; --orange-dk: #F08A4B; --blue: #6FA0F0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12172A; --ink: #F3EFE8; --ink2: #B7BCCB; --line: #2C3350; --card: #1B2340;
+    --orange: #F08A4B; --orange-dk: #F08A4B; --blue: #6FA0F0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 16px 16px 40px; }
+  header { background: #1B2340; color: #FBF7F0; padding: 18px 16px 16px; }
+  header .inner { max-width: 640px; margin: 0 auto; }
+  header .sub { color: #F6B48F; font-weight: 700; font-size: 14px; margin: 0 0 4px; }
+  header h1 { margin: 0; font-size: 26px; line-height: 1.25; }
+  header h1 em { font-style: normal; color: #F08A4B; }
+  .guide { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 0 0 12px; font-size: 14px; line-height: 1.6; }
+  .guide b { color: var(--orange-dk); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
+  button, .file, select {
+    font: inherit; font-size: 15px; font-weight: 700; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); padding: 10px 14px; min-height: 44px; cursor: pointer;
+  }
+  button.primary { background: var(--orange); border-color: var(--orange); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .file input { display: none; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; min-width: 64px; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .stage { position: relative; width: 100%; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 3 / 4; }
+  .stage video, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .stage .msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+    color: #fff; font-size: 15px; padding: 24px; line-height: 1.6; }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .card .k { font-size: 13px; color: var(--ink2); font-weight: 700; }
+  .card .v { font-size: 40px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .card .v small { font-size: 18px; }
+  .card.now .v { color: var(--orange); }
+  .ref { font-size: 13px; color: var(--ink2); line-height: 1.6; margin: 0 0 6px; }
+  .ref .e { color: var(--orange-dk); font-weight: 700; }
+  .ref .b { color: var(--blue); font-weight: 700; }
+  .note { font-size: 12px; color: var(--ink2); line-height: 1.6; margin-top: 14px; }
+  .status { font-size: 13px; color: var(--ink2); min-height: 1.4em; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<header><div class="inner">
+  <p class="sub">スマホのカメラ × AI</p>
+  <h1>その場で「<em>肘</em>」の角度をはかる</h1>
+</div></header>
+<main>
+  <div class="guide">
+    投げる人を<b>真横から</b>、<b>全身が入るように</b>写してください。AIが関節を見つけ、肘の角度を表示します。<br>
+    撮っておいた動画を選んで、ゆっくり再生しながら見ることもできます。
+  </div>
+
+  <div class="row">
+    <button id="btnCam" class="primary">カメラで写す</button>
+    <label class="file">動画を選ぶ<input id="file" type="file" accept="video/*"></label>
+    <button id="btnFlip" hidden>カメラ切替</button>
+  </div>
+  <div class="row">
+    <div class="seg" role="group" aria-label="測る腕">
+      <button data-arm="auto" aria-pressed="true">自動</button>
+      <button data-arm="right" aria-pressed="false">右腕</button>
+      <button data-arm="left" aria-pressed="false">左腕</button>
+    </div>
+    <select id="speed" hidden aria-label="再生の速さ">
+      <option value="1">ふつうの速さ</option>
+      <option value="0.5">1/2 スロー</option>
+      <option value="0.25" selected>1/4 スロー</option>
+    </select>
+  </div>
+
+  <div class="stage" id="stage">
+    <video id="video" playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="msg" id="msg">「カメラで写す」か「動画を選ぶ」を押してください</div>
+  </div>
+  <p class="status" id="status"></p>
+
+  <div class="readout">
+    <div class="card now"><div class="k">いまの肘の角度</div><div class="v" id="vNow">－</div></div>
+    <div class="card"><div class="k">いちばん深く曲げた角度</div><div class="v" id="vMin">－</div></div>
+  </div>
+  <div class="row"><button id="btnReset">記録をリセット</button></div>
+  <p class="ref">参考（ポスターの研究、ためで最も曲げた角度・1人ずつの中央値）：
+    <span class="e">経験者 64°</span> ／ <span class="b">未経験者 77°</span><br>角度が小さいほど、深く曲げています。</p>
+
+  <p class="note">
+    ・映像はこのスマホの中だけで処理します。保存も送信もしません。<br>
+    ・体験用の簡易版です。軽いAIで1コマずつ測るため、研究で求めた値とは少し違います。<br>
+    ・真横から写さないと、角度は正しく出ません。
+  </p>
+</main>
+
+<script type="module">
+import { FilesetResolver, PoseLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+const MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+const ARM = { left: [11, 13, 15], right: [12, 14, 16] };   // 肩・肘・手首（本人から見た左右）
+const BONES = [[11, 12], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28],
+               [27, 31], [28, 32], [11, 13], [13, 15], [12, 14], [14, 16]];
+const MIN_VIS = 0.5;
+
+const $ = id => document.getElementById(id);
+const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
+let landmarker = null, stream = null, facing = "environment", mode = null;
+let arm = "auto", smooth = null, minAngle = null, lastTime = -1, lastTs = 0, gen = 0;
+
+function setStatus(t) { $("status").textContent = t; }
+function showMsg(t) { $("msg").textContent = t; $("msg").hidden = !t; }
+
+async function loadModel() {
+  if (landmarker) return landmarker;
+  showMsg("AIを読み込んでいます…（初回は数秒かかります）");
+  const files = await FilesetResolver.forVisionTasks(WASM);
+  const opts = { baseOptions: { modelAssetPath: MODEL, delegate: "GPU" }, runningMode: "VIDEO", numPoses: 1 };
+  try {
+    landmarker = await PoseLandmarker.createFromOptions(files, opts);
+  } catch {
+    opts.baseOptions.delegate = "CPU";                       // GPU が使えない機種
+    landmarker = await PoseLandmarker.createFromOptions(files, opts);
+  }
+  return landmarker;
+}
+
+function angleAt(a, b, c) {                                  // b での角度 [度]（画像上の2次元）
+  const v1 = [a.x - b.x, a.y - b.y], v2 = [c.x - b.x, c.y - b.y];
+  const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (Math.hypot(...v1) * Math.hypot(...v2));
+  return Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI;
+}
+
+function pickArm(p) {
+  if (arm !== "auto") return arm;
+  const vis = s => Math.min(...ARM[s].map(i => p[i].visibility ?? 0));
+  return vis("right") >= vis("left") ? "right" : "left";    // カメラ側の（よく見えている）腕
+}
+
+function resetRecord() { minAngle = null; smooth = null; $("vMin").innerHTML = "－"; $("vNow").innerHTML = "－"; }
+
+function draw(result) {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const lm = result?.landmarks?.[0];
+  if (!lm) { $("vNow").innerHTML = "－"; setStatus("人が見つかりません。全身が入るように写してください"); return; }
+  const P = i => ({ x: lm[i].x * W, y: lm[i].y * H, v: lm[i].visibility ?? 1 });
+  const side = pickArm(lm);
+  const [s, e, w] = ARM[side].map(P);
+  const lw = Math.max(3, W / 160);
+  ctx.lineCap = "round";
+  for (const [a, b] of BONES) {
+    const A = P(a), B = P(b);
+    if (A.v < MIN_VIS || B.v < MIN_VIS) continue;
+    ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+  }
+  const ok = Math.min(s.v, e.v, w.v) >= MIN_VIS;
+  // 測っている腕を太く
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = lw * 2.6;
+  ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(e.x, e.y); ctx.lineTo(w.x, w.y); ctx.stroke();
+  ctx.strokeStyle = "#E2601B"; ctx.lineWidth = lw * 1.6;
+  ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(e.x, e.y); ctx.lineTo(w.x, w.y); ctx.stroke();
+  for (const q of [s, e, w]) { ctx.fillStyle = "#E2601B"; ctx.beginPath(); ctx.arc(q.x, q.y, lw * 1.6, 0, 7); ctx.fill(); }
+  if (!ok) { setStatus("腕がよく見えません。真横から、腕が隠れないように写してください"); return; }
+
+  const raw = angleAt(s, e, w);
+  smooth = smooth == null ? raw : smooth * 0.6 + raw * 0.4; // 細かな揺れを抑える
+  minAngle = minAngle == null ? smooth : Math.min(minAngle, smooth);
+  // 肘の角度の弧
+  const a1 = Math.atan2(s.y - e.y, s.x - e.x), a2 = Math.atan2(w.y - e.y, w.x - e.x);
+  let d = a2 - a1; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+  const r = Math.max(24, Math.hypot(s.x - e.x, s.y - e.y) * 0.35);
+  ctx.strokeStyle = "#FFD54A"; ctx.lineWidth = lw * 1.4;
+  ctx.beginPath(); ctx.arc(e.x, e.y, r, a1, a1 + d, d < 0); ctx.stroke();
+  // 肘の横に数値
+  const label = `${Math.round(smooth)}°`;
+  ctx.font = `800 ${Math.round(W / 11)}px "Hiragino Sans", system-ui, sans-serif`;
+  const tw = ctx.measureText(label).width, th = W / 11;
+  let lx = e.x + r + 8, ly = e.y - th / 2;
+  if (lx + tw + 16 > W) lx = e.x - r - tw - 24;
+  ctx.fillStyle = "rgba(185,71,13,0.92)";
+  ctx.beginPath(); ctx.roundRect(lx, ly - 6, tw + 16, th + 12, 10); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.textBaseline = "top"; ctx.fillText(label, lx + 8, ly);
+
+  $("vNow").innerHTML = `${Math.round(smooth)}<small>°</small>`;
+  $("vMin").innerHTML = `${Math.round(minAngle)}<small>°</small>`;
+  setStatus(`${side === "right" ? "右" : "左"}腕を測っています`);
+}
+
+function loop(g) {
+  if (!mode || g !== gen) return;                          // 古いループは止める
+  if (video.readyState >= 2 && video.currentTime !== lastTime) {
+    lastTime = video.currentTime;
+    if (canvas.width !== video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; }
+    $("stage").style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+    lastTs = Math.max(lastTs + 1, mode === "camera" ? performance.now() : lastTs + 33);  // AIには増え続ける時刻を渡す
+    draw(landmarker.detectForVideo(video, lastTs));
+  }
+  if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(() => loop(g)); else requestAnimationFrame(() => loop(g));
+}
+
+function stopAll() {
+  mode = null;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.pause(); video.removeAttribute("src"); video.srcObject = null;
+}
+
+async function startCamera() {
+  try {
+    await loadModel();
+    stopAll();
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    video.srcObject = stream; video.loop = false;
+    await video.play();
+    showMsg(""); resetRecord(); lastTime = -1; mode = "camera";
+    $("btnFlip").hidden = false; $("speed").hidden = true;
+    loop(++gen);
+  } catch (err) {
+    showMsg("カメラを使えませんでした。ブラウザの設定でカメラを許可してください。");
+    setStatus(String(err && err.message || err));
+  }
+}
+
+async function startFile(file) {
+  try {
+    await loadModel();
+    stopAll();
+    video.src = URL.createObjectURL(file); video.loop = true; video.controls = false;
+    video.playbackRate = Number($("speed").value);
+    await video.play();
+    video.playbackRate = Number($("speed").value);
+    showMsg(""); resetRecord(); lastTime = -1; mode = "file";
+    $("btnFlip").hidden = true; $("speed").hidden = false;
+    loop(++gen);
+  } catch (err) {
+    showMsg("この動画は読み込めませんでした。");
+    setStatus(String(err && err.message || err));
+  }
+}
+
+$("btnCam").onclick = startCamera;
+$("btnFlip").onclick = () => { facing = facing === "environment" ? "user" : "environment"; startCamera(); };
+$("file").onchange = e => { const f = e.target.files[0]; if (f) startFile(f); e.target.value = ""; };
+$("speed").onchange = () => { video.playbackRate = Number($("speed").value); };
+$("btnReset").onclick = resetRecord;
+video.addEventListener("seeked", () => { lastTime = -1; });
+for (const b of document.querySelectorAll(".seg button")) {
+  b.onclick = () => {
+    arm = b.dataset.arm; smooth = null;
+    for (const x of document.querySelectorAll(".seg button")) x.setAttribute("aria-pressed", String(x === b));
+  };
+}
+</script>
+</body>
+</html>
